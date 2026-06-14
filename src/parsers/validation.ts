@@ -4,7 +4,8 @@ export type ValidationFailureReason =
   | "missing_columns"
   | "ambiguous_empty"
   | "total_mismatch"
-  | "duplicate_key";
+  | "duplicate_key"
+  | "invalid_values";
 
 export type ValidationResult =
   | { ok: true }

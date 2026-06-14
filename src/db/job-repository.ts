@@ -147,6 +147,15 @@ export class JobRepository {
     return job;
   }
 
+  listByStatus(status: JobStatus): JobRecord[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM collection_jobs WHERE status = ? ORDER BY created_at"
+      )
+      .all(status) as JobRow[];
+    return rows.map(mapJob);
+  }
+
   update(id: string, patch: JobPatch): JobRecord {
     const entries = Object.entries(patch) as Array<
       [keyof JobPatch, JobPatch[keyof JobPatch]]

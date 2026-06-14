@@ -22,7 +22,9 @@ export function registerStatusRoutes(
   app: FastifyInstance,
   db: Database.Database,
   jobs: JobRepository,
-  control: JobPickupControl
+  control: JobPickupControl,
+  onJobRetry?: (jobId: string) => void,
+  onResume?: () => void
 ): void {
   app.get("/api/jobs", async () => {
     const rows = db
@@ -68,13 +70,15 @@ export function registerStatusRoutes(
     if (job.status !== "failed" && job.status !== "waiting_auth") {
       return reply.code(409).send({ error: "JOB_NOT_RETRYABLE" });
     }
-    return jobs.update(id, {
+    const retried = jobs.update(id, {
       status: "queued",
       checkpoint: null,
       errorCode: null,
       errorMessage: null,
       finishedAt: null
     });
+    onJobRetry?.(id);
+    return retried;
   });
 
   app.post("/api/system/pause", async () => {
@@ -84,6 +88,7 @@ export function registerStatusRoutes(
 
   app.post("/api/system/resume", async () => {
     control.resume();
+    onResume?.();
     return control.status();
   });
 

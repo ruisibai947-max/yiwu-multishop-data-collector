@@ -12,6 +12,7 @@ export type JobRouteOptions = {
   db: Database.Database;
   jobs: JobRepository;
   supportedDatasets: Map<string, Set<string>>;
+  onJobCreated?: (jobId: string) => void;
 };
 
 export function registerJobRoutes(
@@ -53,6 +54,7 @@ export function registerJobRoutes(
       businessTo: parsed.data.businessTo,
       triggerType: "manual"
     });
+    options.onJobCreated?.(job.id);
 
     return reply.code(201).send(job);
   });

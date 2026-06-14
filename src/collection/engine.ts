@@ -8,6 +8,7 @@ import type { NormalizedRepository } from "../db/normalized-repository.js";
 import type { QuarantineRepository } from "../db/quarantine-repository.js";
 import type { DatasetParser } from "../parsers/contracts.js";
 import { validateDataset } from "../parsers/validation.js";
+import type { Publisher } from "../publishers/contracts.js";
 import { archiveArtifact } from "../runtime/archive-artifact.js";
 import {
   DataValidationError,
@@ -25,6 +26,7 @@ export type CollectionEngineOptions = {
   archiveRoot: string;
   adapters: Map<string, PlatformAdapter>;
   parsers: Map<string, DatasetParser>;
+  publishers?: Publisher[];
   sleep?: Sleep;
   retryDelaysMs?: number[];
 };
@@ -83,12 +85,15 @@ export class CollectionEngine {
       });
 
       try {
-        await this.collectOnce(this.options.jobs.require(jobId));
-        return this.options.jobs.update(jobId, {
+        const completedJob = this.options.jobs.require(jobId);
+        const rowIds = await this.collectOnce(completedJob);
+        this.options.jobs.update(jobId, {
           status: "succeeded",
           checkpoint: "stored",
           finishedAt: new Date().toISOString()
         });
+        await this.publishBestEffort(completedJob, rowIds);
+        return this.options.jobs.require(jobId);
       } catch (error) {
         if (error instanceof RetryableCollectionError) {
           const delay = this.retryDelaysMs[attempt - 1];
@@ -132,12 +137,15 @@ export class CollectionEngine {
     });
 
     try {
-      await this.processArtifact(this.options.jobs.require(jobId), collected);
-      return this.options.jobs.update(jobId, {
+      const currentJob = this.options.jobs.require(jobId);
+      const rowIds = await this.processArtifact(currentJob, collected);
+      this.options.jobs.update(jobId, {
         status: "succeeded",
         checkpoint: "stored",
         finishedAt: new Date().toISOString()
       });
+      await this.publishBestEffort(currentJob, rowIds);
+      return this.options.jobs.require(jobId);
     } catch (error) {
       const details = errorDetails(error);
       this.options.jobs.update(jobId, {
@@ -150,7 +158,7 @@ export class CollectionEngine {
     }
   }
 
-  private async collectOnce(job: JobRecord): Promise<void> {
+  private async collectOnce(job: JobRecord): Promise<string[]> {
     const adapter = this.options.adapters.get(job.platform);
     if (!adapter) {
       throw new DataValidationError(
@@ -179,20 +187,22 @@ export class CollectionEngine {
     this.options.jobs.update(job.id, { checkpoint: "session_ready" });
 
     let artifactCount = 0;
+    const rowIds: string[] = [];
     for await (const collected of adapter.collect(request)) {
       artifactCount += 1;
-      await this.processArtifact(job, collected);
+      rowIds.push(...(await this.processArtifact(job, collected)));
     }
 
     if (artifactCount === 0) {
       throw new DataValidationError("Adapter returned no artifacts");
     }
+    return rowIds;
   }
 
   private async processArtifact(
     job: JobRecord,
     collected: CollectedArtifact
-  ): Promise<void> {
+  ): Promise<string[]> {
     const parser = this.options.parsers.get(job.datasetCode);
     if (!parser) {
       throw new DataValidationError(
@@ -225,7 +235,20 @@ export class CollectionEngine {
       checkpoint: "artifact_archived"
     });
 
-    const rows = await parser.parse(artifact.filePath);
+    let rows;
+    try {
+      rows = await parser.parse(artifact.filePath);
+    } catch (error) {
+      if (error instanceof DataValidationError) {
+        this.options.quarantine.create({
+          jobId: job.id,
+          datasetCode: job.datasetCode,
+          reasonCode: "invalid_values",
+          details: { message: error.message }
+        });
+      }
+      throw error;
+    }
     this.options.jobs.update(job.id, { checkpoint: "parsed" });
     const validation = validateDataset({
       ...(await parser.validationContext(artifact.filePath, rows)),
@@ -240,20 +263,55 @@ export class CollectionEngine {
       });
       throw new DataValidationError(validation.reasonCode);
     }
+    const rowIds: string[] = [];
     for (const row of rows) {
-      this.options.normalized.upsert({
-        platform: job.platform,
-        datasetCode: job.datasetCode,
-        accountId: job.accountId,
-        shopId: job.shopId,
-        businessDate: row.businessDate,
-        naturalKey: row.naturalKey,
-        ...(row.currency ? { currency: row.currency } : {}),
-        payload: row.payload,
-        metrics: row.metrics,
-        sourceArtifactId: artifact.id
-      });
+      rowIds.push(
+        this.options.normalized.upsert({
+          platform: job.platform,
+          datasetCode: job.datasetCode,
+          accountId: job.accountId,
+          shopId: job.shopId,
+          businessDate: row.businessDate,
+          naturalKey: row.naturalKey,
+          ...(row.currency ? { currency: row.currency } : {}),
+          payload: row.payload,
+          metrics: row.metrics,
+          sourceArtifactId: artifact.id
+        }).id
+      );
     }
     this.options.jobs.update(job.id, { checkpoint: "stored" });
+    return rowIds;
+  }
+
+  private async publishBestEffort(
+    job: JobRecord,
+    rowIds: string[]
+  ): Promise<void> {
+    const publishers = this.options.publishers ?? [];
+    if (publishers.length === 0) {
+      return;
+    }
+    const batch = {
+      batchKey: [
+        job.datasetCode,
+        job.businessFrom,
+        job.businessTo,
+        job.shopId ?? job.accountId
+      ].join(":"),
+      datasetCode: job.datasetCode,
+      rowIds
+    };
+    let allSucceeded = true;
+    for (const publisher of publishers) {
+      try {
+        await publisher.publish(batch);
+      } catch {
+        allSucceeded = false;
+      }
+    }
+    if (allSucceeded) {
+      this.options.jobs.update(job.id, { checkpoint: "published" });
+    }
   }
 }

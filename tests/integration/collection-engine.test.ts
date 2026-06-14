@@ -10,8 +10,14 @@ import { JobRepository } from "../../src/db/job-repository.js";
 import { migrate } from "../../src/db/migrate.js";
 import { NormalizedRepository } from "../../src/db/normalized-repository.js";
 import { openDatabase } from "../../src/db/open-database.js";
+import { PublicationRepository } from "../../src/db/publication-repository.js";
 import { QuarantineRepository } from "../../src/db/quarantine-repository.js";
 import { MockFinanceParser } from "../../src/parsers/mock-finance-parser.js";
+import {
+  FeishuPublisher,
+  type FeishuTransport
+} from "../../src/publishers/feishu.js";
+import type { Publisher } from "../../src/publishers/contracts.js";
 
 let directory: string;
 let db: ReturnType<typeof openDatabase>;
@@ -54,7 +60,8 @@ function createJob(id: string, accountId: string, shopId: string) {
 
 function createEngine(
   adapter: MockAdapter,
-  sleep: (milliseconds: number) => Promise<void> = async () => {}
+  sleep: (milliseconds: number) => Promise<void> = async () => {},
+  publishers: Publisher[] = []
 ) {
   return new CollectionEngine({
     jobs,
@@ -64,7 +71,8 @@ function createEngine(
     archiveRoot: path.join(directory, "raw"),
     adapters: new Map([["mock", adapter]]),
     parsers: new Map([["finance_daily", new MockFinanceParser()]]),
-    sleep
+    sleep,
+    publishers
   });
 }
 
@@ -162,6 +170,67 @@ describe("CollectionEngine", () => {
       errorCode: "data_validation"
     });
     expect(artifacts.count()).toBe(1);
+    expect(quarantine.count()).toBe(1);
+    expect(normalized.count()).toBe(0);
+  });
+
+  it("keeps collection succeeded when a publication fails", async () => {
+    seedAccount("account-publish", "shop-publish");
+    createJob("job-publish", "account-publish", "shop-publish");
+    const publications = new PublicationRepository(db);
+    const transport: FeishuTransport = {
+      async publish() {
+        throw new Error("Feishu unavailable");
+      }
+    };
+    const publisher = new FeishuPublisher(
+      {
+        appToken: "test-token",
+        tableId: "test-table",
+        enabled: true
+      },
+      publications,
+      normalized,
+      transport
+    );
+
+    await createEngine(
+      new MockAdapter(),
+      async () => {},
+      [publisher]
+    ).run("job-publish");
+
+    expect(jobs.get("job-publish")).toMatchObject({
+      status: "succeeded",
+      checkpoint: "stored"
+    });
+    expect(
+      publications.get(
+        "feishu",
+        "finance_daily:2026-06-14:2026-06-14:shop-publish"
+      )
+    ).toMatchObject({
+      status: "failed",
+      attemptCount: 1
+    });
+  });
+
+  it("quarantines invalid field values reported by a parser", async () => {
+    seedAccount("account-values", "shop-values");
+    createJob("job-values", "account-values", "shop-values");
+    const adapter = new MockAdapter({
+      csvContent: [
+        "business_date,shop_id,gmv,refund,ad_spend,currency",
+        "2026-06-14,shop-values,,5.00,12.00,USD"
+      ].join("\n")
+    });
+
+    await createEngine(adapter).run("job-values");
+
+    expect(jobs.get("job-values")).toMatchObject({
+      status: "failed",
+      errorCode: "data_validation"
+    });
     expect(quarantine.count()).toBe(1);
     expect(normalized.count()).toBe(0);
   });
