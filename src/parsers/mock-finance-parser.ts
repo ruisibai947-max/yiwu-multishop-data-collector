@@ -10,18 +10,20 @@ import type {
 
 type FinanceCsvRow = {
   business_date?: string;
-  natural_key?: string;
-  currency?: string;
+  shop_id?: string;
   gmv?: string;
   refund?: string;
+  ad_spend?: string;
+  currency?: string;
 };
 
 const requiredColumns = [
   "business_date",
-  "natural_key",
-  "currency",
+  "shop_id",
   "gmv",
-  "refund"
+  "refund",
+  "ad_spend",
+  "currency"
 ];
 
 function csvColumns(csv: string): string[] {
@@ -51,23 +53,37 @@ export class MockFinanceParser implements DatasetParser {
 
     return records.map((record) => {
       const businessDate = record.business_date?.trim();
-      const naturalKey = record.natural_key?.trim();
-      const currency = record.currency?.trim();
+      const naturalKey = record.shop_id?.trim();
       const gmv = record.gmv?.trim();
       const refund = record.refund?.trim();
-      if (!businessDate || !naturalKey || !currency || !gmv || !refund) {
+      const adSpend = record.ad_spend?.trim();
+      const currency = record.currency?.trim();
+      if (
+        !businessDate ||
+        !naturalKey ||
+        !gmv ||
+        !refund ||
+        !adSpend ||
+        !currency
+      ) {
         throw new DataValidationError("Finance CSV contains an empty value");
       }
       const metrics: NormalizedMetric[] = [
         { code: "gmv", value: gmv, unit: "money", currency },
-        { code: "refund", value: refund, unit: "money", currency }
+        { code: "refund", value: refund, unit: "money", currency },
+        {
+          code: "ad_spend",
+          value: adSpend,
+          unit: "money",
+          currency
+        }
       ];
 
       return {
         naturalKey,
         businessDate,
         currency,
-        payload: { gmv, refund },
+        payload: { shopId: naturalKey, gmv, refund, adSpend },
         metrics
       };
     });

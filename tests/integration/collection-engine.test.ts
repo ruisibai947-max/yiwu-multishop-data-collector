@@ -150,8 +150,8 @@ describe("CollectionEngine", () => {
     createJob("job-invalid", "account-invalid", "shop-invalid");
     const adapter = new MockAdapter({
       csvContent: [
-        "business_date,natural_key,currency,refund",
-        "2026-06-14,summary,USD,5.00"
+        "business_date,shop_id,refund,ad_spend,currency",
+        "2026-06-14,shop-invalid,5.00,12.00,USD"
       ].join("\n")
     });
 

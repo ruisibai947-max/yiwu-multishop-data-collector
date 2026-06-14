@@ -12,8 +12,8 @@ export type MockAdapterOptions = {
 };
 
 const defaultCsv = [
-  "business_date,natural_key,currency,gmv,refund",
-  "2026-06-14,summary,USD,100.00,5.00"
+  "business_date,shop_id,gmv,refund,ad_spend,currency",
+  "2026-06-14,shop-1,100.00,5.00,12.00,USD"
 ].join("\n");
 
 export class MockAdapter implements PlatformAdapter {

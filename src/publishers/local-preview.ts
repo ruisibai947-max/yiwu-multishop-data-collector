@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { NormalizedRepository } from "../db/normalized-repository.js";
+import type { PublicationRepository } from "../db/publication-repository.js";
 import type { PublicationBatch, Publisher } from "./contracts.js";
 import { loadPublishableRows } from "./rows.js";
 
@@ -13,10 +14,34 @@ export class LocalPreviewPublisher implements Publisher {
 
   constructor(
     private readonly runtimeRoot: string,
-    private readonly normalized: NormalizedRepository
+    private readonly normalized: NormalizedRepository,
+    private readonly publications?: PublicationRepository
   ) {}
 
   async publish(batch: PublicationBatch): Promise<void> {
+    if (this.publications) {
+      this.publications.getOrCreate({
+        destination: this.destination,
+        datasetCode: batch.datasetCode,
+        batchKey: batch.batchKey
+      });
+      this.publications.markRunning(this.destination, batch.batchKey);
+    }
+
+    try {
+      await this.writePreview(batch);
+      this.publications?.markSucceeded(this.destination, batch.batchKey);
+    } catch (error) {
+      this.publications?.markFailed(
+        this.destination,
+        batch.batchKey,
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    }
+  }
+
+  private async writePreview(batch: PublicationBatch): Promise<void> {
     const rows = loadPublishableRows(
       this.normalized,
       batch.batchKey,
