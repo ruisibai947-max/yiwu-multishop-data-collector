@@ -1,4 +1,7 @@
-import type { PlatformAdapter } from "../adapters/contracts.js";
+import type {
+  CollectedArtifact,
+  PlatformAdapter
+} from "../adapters/contracts.js";
 import type { ArtifactRepository } from "../db/artifact-repository.js";
 import type { JobRecord, JobRepository } from "../db/job-repository.js";
 import type { NormalizedRepository } from "../db/normalized-repository.js";
@@ -111,17 +114,44 @@ export class CollectionEngine {
     }
   }
 
+  async ingestArtifact(
+    jobId: string,
+    collected: CollectedArtifact
+  ): Promise<JobRecord> {
+    const job = this.options.jobs.require(jobId);
+    this.options.jobs.update(jobId, {
+      status: "running",
+      attemptCount: 1,
+      startedAt: job.startedAt ?? new Date().toISOString(),
+      finishedAt: null,
+      errorCode: null,
+      errorMessage: null
+    });
+
+    try {
+      await this.processArtifact(this.options.jobs.require(jobId), collected);
+      return this.options.jobs.update(jobId, {
+        status: "succeeded",
+        checkpoint: "stored",
+        finishedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      const details = errorDetails(error);
+      this.options.jobs.update(jobId, {
+        status: "failed",
+        errorCode: details.code,
+        errorMessage: details.message,
+        finishedAt: new Date().toISOString()
+      });
+      throw error;
+    }
+  }
+
   private async collectOnce(job: JobRecord): Promise<void> {
     const adapter = this.options.adapters.get(job.platform);
     if (!adapter) {
       throw new DataValidationError(
         `No adapter registered for platform: ${job.platform}`
-      );
-    }
-    const parser = this.options.parsers.get(job.datasetCode);
-    if (!parser) {
-      throw new DataValidationError(
-        `No parser registered for dataset: ${job.datasetCode}`
       );
     }
     if (!job.shopId) {
@@ -148,47 +178,66 @@ export class CollectionEngine {
     let artifactCount = 0;
     for await (const collected of adapter.collect(request)) {
       artifactCount += 1;
-      const archived = await archiveArtifact(this.options.archiveRoot, {
-        platform: job.platform,
-        accountId: job.accountId,
-        shopId: job.shopId,
-        jobId: job.id,
-        suggestedName: collected.suggestedName,
-        bytes: collected.bytes
-      });
-      const artifact = this.options.artifacts.create({
-        jobId: job.id,
-        artifactType: collected.type,
-        filePath: archived.filePath,
-        sha256: archived.sha256,
-        byteSize: archived.byteSize,
-        metadata: collected.metadata
-      });
-      this.options.jobs.update(job.id, {
-        checkpoint: "artifact_archived"
-      });
-
-      const rows = await parser.parse(artifact.filePath);
-      this.options.jobs.update(job.id, { checkpoint: "parsed" });
-      for (const row of rows) {
-        this.options.normalized.upsert({
-          platform: job.platform,
-          datasetCode: job.datasetCode,
-          accountId: job.accountId,
-          shopId: job.shopId,
-          businessDate: row.businessDate,
-          naturalKey: row.naturalKey,
-          ...(row.currency ? { currency: row.currency } : {}),
-          payload: row.payload,
-          metrics: row.metrics,
-          sourceArtifactId: artifact.id
-        });
-      }
-      this.options.jobs.update(job.id, { checkpoint: "stored" });
+      await this.processArtifact(job, collected);
     }
 
     if (artifactCount === 0) {
       throw new DataValidationError("Adapter returned no artifacts");
     }
+  }
+
+  private async processArtifact(
+    job: JobRecord,
+    collected: CollectedArtifact
+  ): Promise<void> {
+    const parser = this.options.parsers.get(job.datasetCode);
+    if (!parser) {
+      throw new DataValidationError(
+        `No parser registered for dataset: ${job.datasetCode}`
+      );
+    }
+    if (!job.shopId) {
+      throw new DataValidationError(
+        `Dataset ${job.datasetCode} requires a shop`
+      );
+    }
+
+    const archived = await archiveArtifact(this.options.archiveRoot, {
+      platform: job.platform,
+      accountId: job.accountId,
+      shopId: job.shopId,
+      jobId: job.id,
+      suggestedName: collected.suggestedName,
+      bytes: collected.bytes
+    });
+    const artifact = this.options.artifacts.create({
+      jobId: job.id,
+      artifactType: collected.type,
+      filePath: archived.filePath,
+      sha256: archived.sha256,
+      byteSize: archived.byteSize,
+      metadata: collected.metadata
+    });
+    this.options.jobs.update(job.id, {
+      checkpoint: "artifact_archived"
+    });
+
+    const rows = await parser.parse(artifact.filePath);
+    this.options.jobs.update(job.id, { checkpoint: "parsed" });
+    for (const row of rows) {
+      this.options.normalized.upsert({
+        platform: job.platform,
+        datasetCode: job.datasetCode,
+        accountId: job.accountId,
+        shopId: job.shopId,
+        businessDate: row.businessDate,
+        naturalKey: row.naturalKey,
+        ...(row.currency ? { currency: row.currency } : {}),
+        payload: row.payload,
+        metrics: row.metrics,
+        sourceArtifactId: artifact.id
+      });
+    }
+    this.options.jobs.update(job.id, { checkpoint: "stored" });
   }
 }
