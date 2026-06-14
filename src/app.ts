@@ -1,5 +1,8 @@
 import Fastify from "fastify";
+import fastifyStatic from "@fastify/static";
 import type Database from "better-sqlite3";
+import fs from "node:fs";
+import path from "node:path";
 import { registerAccountRoutes } from "./api/account-routes.js";
 import { registerArtifactRoutes } from "./api/artifact-routes.js";
 import { registerShopRoutes } from "./api/shop-routes.js";
@@ -13,6 +16,7 @@ import { JobRepository } from "./db/job-repository.js";
 export type BuildAppOptions = {
   db?: Database.Database;
   runtimeDir?: string;
+  adminDistDir?: string;
 };
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -28,6 +32,14 @@ export function buildApp(options: BuildAppOptions = {}) {
     registerShopRoutes(app, options.db);
     registerStatusRoutes(app, options.db, jobs, control);
     registerArtifactRoutes(app, options.db, artifacts, options.runtimeDir);
+  }
+
+  const adminDistDir = options.adminDistDir ?? path.resolve("admin/dist");
+  if (fs.existsSync(path.join(adminDistDir, "index.html"))) {
+    app.register(fastifyStatic, {
+      root: adminDistDir,
+      index: ["index.html"]
+    });
   }
 
   return app;
