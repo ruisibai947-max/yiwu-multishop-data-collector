@@ -1,0 +1,14 @@
+{
+  "runtimeDir": "C:\\YiwuCollector\\runtime",
+  "databaseFile": "collector.db",
+  "api": {
+    "host": "127.0.0.1",
+    "port": 4310
+  },
+  "bitBrowser": {
+    "baseUrl": "http://127.0.0.1:54345"
+  },
+  "secrets": {
+    "feishuAppSecret": "feishu_app_secret"
+  }
+}
