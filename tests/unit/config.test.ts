@@ -44,6 +44,17 @@ describe("app config", () => {
     });
   });
 
+  it("uses POSIX separators for POSIX absolute runtime directories", () => {
+    expect(
+      runtimePaths(
+        parseAppConfig({
+          ...validConfig,
+          runtimeDir: "/tmp/yiwu-collector"
+        })
+      ).database
+    ).toBe("/tmp/yiwu-collector/collector.db");
+  });
+
   it("reads a named Windows DPAPI secret through an injected runner", async () => {
     const commands: string[] = [];
     const store = new WindowsDpapiSecretStore(

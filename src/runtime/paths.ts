@@ -2,9 +2,9 @@ import path from "node:path";
 import type { AppConfig } from "../config/schema.js";
 
 export function runtimePaths(config: AppConfig) {
-  const pathApi = path.win32.isAbsolute(config.runtimeDir)
-    ? path.win32
-    : path.posix;
+  const pathApi = path.posix.isAbsolute(config.runtimeDir)
+    ? path.posix
+    : path.win32;
 
   return {
     database: pathApi.join(config.runtimeDir, config.databaseFile),
