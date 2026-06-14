@@ -10,6 +10,8 @@
     "test": "vitest run",
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
+    "build:admin": "npm run build --prefix admin",
+    "migrate": "node dist/cli/migrate.js",
     "start": "node dist/server.js",
     "test:watch": "vitest",
     "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
