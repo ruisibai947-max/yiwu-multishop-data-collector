@@ -10,6 +10,7 @@ import { JobRepository } from "../../src/db/job-repository.js";
 import { migrate } from "../../src/db/migrate.js";
 import { NormalizedRepository } from "../../src/db/normalized-repository.js";
 import { openDatabase } from "../../src/db/open-database.js";
+import { QuarantineRepository } from "../../src/db/quarantine-repository.js";
 import { MockFinanceParser } from "../../src/parsers/mock-finance-parser.js";
 
 let directory: string;
@@ -79,6 +80,7 @@ function buildTestApp(maxFileBytes = 1024 * 1024) {
     jobs,
     artifacts,
     normalized,
+    quarantine: new QuarantineRepository(db),
     archiveRoot: path.join(directory, "raw"),
     adapters: new Map(),
     parsers: new Map([["finance_daily", new MockFinanceParser()]])

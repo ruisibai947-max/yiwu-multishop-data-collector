@@ -10,6 +10,7 @@ import { JobRepository } from "../../src/db/job-repository.js";
 import { migrate } from "../../src/db/migrate.js";
 import { NormalizedRepository } from "../../src/db/normalized-repository.js";
 import { openDatabase } from "../../src/db/open-database.js";
+import { QuarantineRepository } from "../../src/db/quarantine-repository.js";
 import { MockFinanceParser } from "../../src/parsers/mock-finance-parser.js";
 
 let directory: string;
@@ -17,6 +18,7 @@ let db: ReturnType<typeof openDatabase>;
 let jobs: JobRepository;
 let artifacts: ArtifactRepository;
 let normalized: NormalizedRepository;
+let quarantine: QuarantineRepository;
 
 function seedAccount(accountId: string, shopId: string) {
   const profileId = `profile-${accountId}`;
@@ -58,6 +60,7 @@ function createEngine(
     jobs,
     artifacts,
     normalized,
+    quarantine,
     archiveRoot: path.join(directory, "raw"),
     adapters: new Map([["mock", adapter]]),
     parsers: new Map([["finance_daily", new MockFinanceParser()]]),
@@ -72,6 +75,7 @@ beforeEach(() => {
   jobs = new JobRepository(db);
   artifacts = new ArtifactRepository(db);
   normalized = new NormalizedRepository(db);
+  quarantine = new QuarantineRepository(db);
 });
 
 afterEach(() => {
@@ -139,5 +143,26 @@ describe("CollectionEngine", () => {
       status: "succeeded",
       attemptCount: 3
     });
+  });
+
+  it("quarantines an invalid artifact before normalized writes", async () => {
+    seedAccount("account-invalid", "shop-invalid");
+    createJob("job-invalid", "account-invalid", "shop-invalid");
+    const adapter = new MockAdapter({
+      csvContent: [
+        "business_date,natural_key,currency,refund",
+        "2026-06-14,summary,USD,5.00"
+      ].join("\n")
+    });
+
+    await createEngine(adapter).run("job-invalid");
+
+    expect(jobs.get("job-invalid")).toMatchObject({
+      status: "failed",
+      errorCode: "data_validation"
+    });
+    expect(artifacts.count()).toBe(1);
+    expect(quarantine.count()).toBe(1);
+    expect(normalized.count()).toBe(0);
   });
 });

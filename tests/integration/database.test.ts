@@ -54,7 +54,7 @@ describe("database", () => {
       .prepare("SELECT COUNT(*) AS count FROM schema_migrations")
       .get() as { count: number };
 
-    expect(result.count).toBe(1);
+    expect(result.count).toBe(2);
     db.close();
   });
 

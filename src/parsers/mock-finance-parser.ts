@@ -4,7 +4,8 @@ import { DataValidationError } from "../collection/errors.js";
 import type {
   DatasetParser,
   NormalizedMetric,
-  NormalizedRow
+  NormalizedRow,
+  ParserValidationContext
 } from "./contracts.js";
 
 type FinanceCsvRow = {
@@ -15,15 +16,21 @@ type FinanceCsvRow = {
   refund?: string;
 };
 
-function requireValue(
-  row: FinanceCsvRow,
-  key: keyof FinanceCsvRow
-): string {
-  const value = row[key]?.trim();
-  if (!value) {
-    throw new DataValidationError(`Missing required CSV field: ${key}`);
-  }
-  return value;
+const requiredColumns = [
+  "business_date",
+  "natural_key",
+  "currency",
+  "gmv",
+  "refund"
+];
+
+function csvColumns(csv: string): string[] {
+  const header = parse(csv, {
+    to_line: 1,
+    skip_empty_lines: true,
+    trim: true
+  }) as string[][];
+  return header[0] ?? [];
 }
 
 export class MockFinanceParser implements DatasetParser {
@@ -31,22 +38,26 @@ export class MockFinanceParser implements DatasetParser {
 
   async parse(filePath: string): Promise<NormalizedRow[]> {
     const csv = await fs.readFile(filePath, "utf8");
+    const actualColumns = csvColumns(csv);
     const records = parse(csv, {
       columns: true,
       skip_empty_lines: true,
       trim: true
     }) as FinanceCsvRow[];
 
-    if (records.length === 0) {
-      throw new DataValidationError("Finance CSV contains no data rows");
+    if (requiredColumns.some((column) => !actualColumns.includes(column))) {
+      return [];
     }
 
     return records.map((record) => {
-      const businessDate = requireValue(record, "business_date");
-      const naturalKey = requireValue(record, "natural_key");
-      const currency = requireValue(record, "currency");
-      const gmv = requireValue(record, "gmv");
-      const refund = requireValue(record, "refund");
+      const businessDate = record.business_date?.trim();
+      const naturalKey = record.natural_key?.trim();
+      const currency = record.currency?.trim();
+      const gmv = record.gmv?.trim();
+      const refund = record.refund?.trim();
+      if (!businessDate || !naturalKey || !currency || !gmv || !refund) {
+        throw new DataValidationError("Finance CSV contains an empty value");
+      }
       const metrics: NormalizedMetric[] = [
         { code: "gmv", value: gmv, unit: "money", currency },
         { code: "refund", value: refund, unit: "money", currency }
@@ -60,5 +71,17 @@ export class MockFinanceParser implements DatasetParser {
         metrics
       };
     });
+  }
+
+  async validationContext(
+    filePath: string,
+    rows: NormalizedRow[]
+  ): Promise<ParserValidationContext> {
+    const csv = await fs.readFile(filePath, "utf8");
+    return {
+      requiredColumns,
+      actualColumns: csvColumns(csv),
+      emptyState: rows.length > 0 ? "non_empty" : "ambiguous"
+    };
   }
 }

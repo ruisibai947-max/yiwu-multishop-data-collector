@@ -8,6 +8,7 @@ import type {
 export type MockAdapterOptions = {
   waitingAccountIds?: Set<string>;
   collectFailures?: Error[];
+  csvContent?: string;
 };
 
 const defaultCsv = [
@@ -19,10 +20,12 @@ export class MockAdapter implements PlatformAdapter {
   readonly platform = "mock";
   private readonly waitingAccountIds: Set<string>;
   private readonly collectFailures: Error[];
+  private readonly csvContent: string;
 
   constructor(options: MockAdapterOptions = {}) {
     this.waitingAccountIds = options.waitingAccountIds ?? new Set();
     this.collectFailures = [...(options.collectFailures ?? [])];
+    this.csvContent = options.csvContent ?? defaultCsv;
   }
 
   async probeSession(request: JobRequest): Promise<SessionProbe> {
@@ -46,7 +49,7 @@ export class MockAdapter implements PlatformAdapter {
 
     yield {
       type: "csv",
-      bytes: Buffer.from(defaultCsv, "utf8"),
+      bytes: Buffer.from(this.csvContent, "utf8"),
       suggestedName: "finance-daily.csv",
       metadata: {
         source: "mock",

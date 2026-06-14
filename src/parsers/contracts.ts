@@ -13,7 +13,19 @@ export type NormalizedRow = {
   metrics: NormalizedMetric[];
 };
 
+export type ParserValidationContext = {
+  requiredColumns: string[];
+  actualColumns: string[];
+  emptyState: "non_empty" | "confirmed_zero" | "ambiguous";
+  detailTotal?: string;
+  reportTotal?: string;
+};
+
 export interface DatasetParser {
   readonly datasetCode: string;
   parse(filePath: string): Promise<NormalizedRow[]>;
+  validationContext(
+    filePath: string,
+    rows: NormalizedRow[]
+  ): Promise<ParserValidationContext>;
 }

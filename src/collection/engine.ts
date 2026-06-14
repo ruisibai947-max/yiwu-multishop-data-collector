@@ -5,7 +5,9 @@ import type {
 import type { ArtifactRepository } from "../db/artifact-repository.js";
 import type { JobRecord, JobRepository } from "../db/job-repository.js";
 import type { NormalizedRepository } from "../db/normalized-repository.js";
+import type { QuarantineRepository } from "../db/quarantine-repository.js";
 import type { DatasetParser } from "../parsers/contracts.js";
+import { validateDataset } from "../parsers/validation.js";
 import { archiveArtifact } from "../runtime/archive-artifact.js";
 import {
   DataValidationError,
@@ -19,6 +21,7 @@ export type CollectionEngineOptions = {
   jobs: JobRepository;
   artifacts: ArtifactRepository;
   normalized: NormalizedRepository;
+  quarantine: QuarantineRepository;
   archiveRoot: string;
   adapters: Map<string, PlatformAdapter>;
   parsers: Map<string, DatasetParser>;
@@ -38,7 +41,7 @@ function errorDetails(error: unknown): {
     return { code: "WAITING_FOR_AUTH", message: error.message };
   }
   if (error instanceof DataValidationError) {
-    return { code: "DATA_VALIDATION", message: error.message };
+    return { code: "data_validation", message: error.message };
   }
   if (error instanceof RetryableCollectionError) {
     return { code: "RETRY_EXHAUSTED", message: error.message };
@@ -224,6 +227,19 @@ export class CollectionEngine {
 
     const rows = await parser.parse(artifact.filePath);
     this.options.jobs.update(job.id, { checkpoint: "parsed" });
+    const validation = validateDataset({
+      ...(await parser.validationContext(artifact.filePath, rows)),
+      rows
+    });
+    if (!validation.ok) {
+      this.options.quarantine.create({
+        jobId: job.id,
+        datasetCode: job.datasetCode,
+        reasonCode: validation.reasonCode,
+        details: validation.details
+      });
+      throw new DataValidationError(validation.reasonCode);
+    }
     for (const row of rows) {
       this.options.normalized.upsert({
         platform: job.platform,
