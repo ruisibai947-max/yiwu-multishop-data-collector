@@ -1,3 +1,9 @@
 .superpowers/
 .worktrees/
 .DS_Store
+node_modules/
+dist/
+admin/dist/
+coverage/
+config/*.local.json
+runtime/
