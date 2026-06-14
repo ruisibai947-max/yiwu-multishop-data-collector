@@ -7,3 +7,4 @@ admin/dist/
 coverage/
 config/*.local.json
 /runtime/
+/evidence/
