@@ -98,7 +98,13 @@ describe("health route", () => {
     expect(jobs.require(response.json().id as string).status).toBe("queued");
 
     await app.inject({ method: "POST", url: "/api/system/resume" });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    const deadline = Date.now() + 2_000;
+    while (
+      jobs.require(response.json().id as string).status !== "succeeded" &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     expect(jobs.require(response.json().id as string).status).toBe(
       "succeeded"
     );
