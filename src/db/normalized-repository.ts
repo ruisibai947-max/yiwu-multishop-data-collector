@@ -17,6 +17,13 @@ export type UpsertNormalizedInput = {
 
 export type StoredNormalizedRow = {
   id: string;
+  platform: string;
+  datasetCode: string;
+  accountId: string;
+  shopId: string;
+  businessDate: string;
+  naturalKey: string;
+  currency: string | null;
   payload: Record<string, unknown>;
   sourceArtifactId: string;
   metrics: Array<NormalizedMetric>;
@@ -130,11 +137,24 @@ export class NormalizedRepository {
   get(id: string): StoredNormalizedRow | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, payload_json, source_artifact_id
+        `SELECT id, platform, dataset_code, account_id, shop_id,
+                business_date, natural_key, currency, payload_json,
+                source_artifact_id
          FROM normalized_rows WHERE id = ?`
       )
       .get(id) as
-      | { id: string; payload_json: string; source_artifact_id: string }
+      | {
+          id: string;
+          platform: string;
+          dataset_code: string;
+          account_id: string;
+          shop_id: string;
+          business_date: string;
+          natural_key: string;
+          currency: string | null;
+          payload_json: string;
+          source_artifact_id: string;
+        }
       | undefined;
 
     if (!row) {
@@ -166,9 +186,26 @@ export class NormalizedRepository {
 
     return {
       id: row.id,
+      platform: row.platform,
+      datasetCode: row.dataset_code,
+      accountId: row.account_id,
+      shopId: row.shop_id,
+      businessDate: row.business_date,
+      naturalKey: row.natural_key,
+      currency: row.currency,
       payload: JSON.parse(row.payload_json) as Record<string, unknown>,
       sourceArtifactId: row.source_artifact_id,
       metrics
     };
+  }
+
+  getMany(ids: string[]): StoredNormalizedRow[] {
+    return ids.map((id) => {
+      const row = this.get(id);
+      if (!row) {
+        throw new Error(`Normalized row not found: ${id}`);
+      }
+      return row;
+    });
   }
 }
