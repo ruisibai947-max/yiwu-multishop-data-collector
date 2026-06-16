@@ -7,6 +7,12 @@ const OpenResponse = z.object({
   })
 });
 
+const ErrorResponse = z.object({
+  success: z.literal(false),
+  msg: z.string().optional(),
+  message: z.string().optional()
+});
+
 export class BitBrowserClient {
   private readonly baseUrl: string;
 
@@ -28,7 +34,17 @@ export class BitBrowserClient {
       throw new Error(`BitBrowser open failed: ${response.status}`);
     }
 
-    const body = OpenResponse.parse(await response.json());
+    const bodyJson = await response.json();
+    const failed = ErrorResponse.safeParse(bodyJson);
+    if (failed.success) {
+      throw new Error(
+        `BitBrowser open failed: ${
+          failed.data.msg ?? failed.data.message ?? "unknown error"
+        }`
+      );
+    }
+
+    const body = OpenResponse.parse(bodyJson);
     return { websocketEndpoint: body.data.ws };
   }
 
