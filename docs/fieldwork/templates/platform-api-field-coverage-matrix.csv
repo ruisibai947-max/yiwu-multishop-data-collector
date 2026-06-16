@@ -1,0 +1,11 @@
+platform,shop_name,data_domain,report_or_page,field_name,business_definition,current_source,api_available,api_endpoint_or_doc,api_permission_required,api_fee_status,report_available,report_name,requires_browser,distributed_agent_candidate,verification_status,verified_sample_path,owner,source_url,notes
+Temu,,orders,,order_id,,manual_browser_export,unknown,,,unknown,unknown,,unknown,unknown,not_started,,,,,
+Temu,,finance,,settlement_amount,,manual_browser_export,unknown,,,unknown,unknown,,unknown,unknown,not_started,,,,,
+TikTok Shop,,orders,,order_id,,manual_browser_export,unknown,,,unknown,unknown,,unknown,unknown,not_started,,,,,
+TikTok Shop,,finance,,payment_amount,,manual_browser_export,unknown,,,unknown,unknown,,unknown,unknown,not_started,,,,,
+SHEIN,,orders,,order_id,,manual_browser_export,unknown,,,unknown,unknown,,unknown,unknown,not_started,,,,,
+SHEIN,,returns,,refund_amount,,manual_browser_export,unknown,,,unknown,unknown,,unknown,unknown,not_started,,,,,
+聚水潭,,orders,,order_id,,erp_or_manual_export,unknown,,,unknown,unknown,,unknown,unknown,not_started,,,,,
+聚水潭,,inventory,,available_stock,,erp_or_manual_export,unknown,,,unknown,unknown,,unknown,unknown,not_started,,,,,
+京东,,orders,,order_id,,manual_browser_export,unknown,,,unknown,unknown,,unknown,unknown,not_started,,,,,
+京东,,after_sales,,refund_amount,,manual_browser_export,unknown,,,unknown,unknown,,unknown,unknown,not_started,,,,,
